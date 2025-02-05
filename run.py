@@ -28,7 +28,7 @@ parser.add_argument('--evaluation_interval', type=int, help='the interval of log
 parser.add_argument('--log_interval', type=int, help='the interval of print training state to interval')
 parser.add_argument('--checkpoint', help='the file name of checkpoint to be load, set to None if do not load data from local checkpoint')
 parser.add_argument('--prefix', help='prefix of checkpoint files, used to distinguish different runs')
-parser.add_argument('--use_cuda', help='whether use GPU')
+parser.add_argument('--use_cuda', help='whether use GPU', default=False)
 # >> HIRO alg parameters
 parser.add_argument('--seed', type=int, help='manual seed')
 parser.add_argument('--max_timestep', type=int, help='max training time step')
@@ -114,7 +114,7 @@ def bool_params_preprocess(file_param):
 def load_params(index):
     # load $ package training arguments
     if args.alg == 'td3_train':
-        f = open('./train_param_td3.csv', 'r', encoding='utf-8')
+        f = open('train_param_td3.csv', 'r', encoding='utf-8')
         with f:
             # read parameters from file
             reader = csv.DictReader(f)
@@ -154,7 +154,7 @@ def load_params(index):
                 use_cuda=args.use_cuda if args.use_cuda is not None else file_param['use_cuda']
             )
     elif args.alg == 'hiro_train':
-        f = open('./train_param_hiro.csv', 'r')
+        f = open('train_param_hiro.csv', 'r')
         with f:
             # read parameters from file
             reader = csv.DictReader(f)
@@ -190,7 +190,8 @@ def load_params(index):
                 episode_len=args.episode_len if args.episode_len is not None else int(file_param['episode_len']),
                 max_timestep=args.max_timestep if args.max_timestep is not None else int(file_param['max_timestep']),
                 start_timestep=args.start_timestep if args.start_timestep is not None else int(file_param['start_timestep']),
-                batch_size=args.batch_size if args.batch_size is not None else int(file_param['batch_size'])
+                batch_size=args.batch_size if args.batch_size is not None else int(file_param['batch_size']),
+                sample_n=2
             )
             params = ParamDict(
                 policy_params=policy_params,
@@ -227,7 +228,7 @@ def cmd_run(params):
     print("    -------------------------------------------------")
     print("    Policy-Params: {}".format(params.policy_params))
     print("=========================================================")
-    wandb.init(project="ziang-hiro-new")
+    #wandb.init(project="ziang-hiro-new")
     if args.alg == 'td3_train':
         td3.train(params)
     elif args.alg == 'hiro_train':
