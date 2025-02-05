@@ -689,7 +689,7 @@ def train(params):
                                                                 state_sequence2, action_sequence2, goal_sequence2,
                                                                 max_goal, params, goal_dim, sample_n)
 
-        next_goal3, experience_buffer_3 = high_level_add_update(t, c, start_timestep, expl_noise_std_h, device,
+        next_goal3, experience_buffer_3 = high_level_add_update(t, c+5, start_timestep, expl_noise_std_h, device,
                                                                 episode_reward_h, done_h, episode_timestep_l,
                                                                 episode_reward_l, episode_num_l,
                                                                 batch_size, total_it, goal3, next_state, actor_target_l,
@@ -699,7 +699,7 @@ def train(params):
                                                                 state_sequence3, action_sequence3, goal_sequence3,
                                                                 max_goal, params, goal_dim, sample_n)
 
-        next_goal4, experience_buffer_4 = high_level_add_update(t, c, start_timestep, expl_noise_std_h, device,
+        next_goal4, experience_buffer_4 = high_level_add_update(t, c+10, start_timestep, expl_noise_std_h, device,
                                                                 episode_reward_h, done_h, episode_timestep_l,
                                                                 episode_reward_l, episode_num_l,
                                                                 batch_size, total_it, goal4, next_state, actor_target_l,
@@ -709,7 +709,7 @@ def train(params):
                                                                 state_sequence4, action_sequence4, goal_sequence4,
                                                                 max_goal, params, goal_dim, sample_n)
 
-        next_goal5, experience_buffer_5 = high_level_add_update(t, c, start_timestep, expl_noise_std_h, device,
+        next_goal5, experience_buffer_5 = high_level_add_update(t, c+15, start_timestep, expl_noise_std_h, device,
                                                                 episode_reward_h, done_h, episode_timestep_l,
                                                                 episode_reward_l, episode_num_l,
                                                                 batch_size, total_it, goal5, next_state, actor_target_l,
