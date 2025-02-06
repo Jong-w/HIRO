@@ -726,9 +726,11 @@ def train(params):
         #n = 2
         tensors = [next_goal5, next_goal4, next_goal3, next_goal2]
         sampled_indices = torch.multinomial(hierarchies_selected.reshape((1,4)), num_samples=sample_n, replacement=False)
+        noise = np.random.normal(loc=0, scale=0.1, size=goal_dim * sample_n).astype(np.float32)
         #sampled_tensors = [tensors[i] for i in sampled_indices[0]]
         #for i in sampled_indices[0]: tensors[i]
         next_goal = torch.cat([tensors[i] for i in sampled_indices[0]])
+        next_goal = next_goal + noise
 
         # 2.2.10 update observations
         state = next_state
