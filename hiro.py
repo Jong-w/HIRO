@@ -532,11 +532,7 @@ def evaluate(actor_l, actor_h, params, target_pos, device):
     print("    > finished evaluation, success rate: {}\n".format(success_rate))
     return success_rate
 
-def high_level_add_update(t,c,start_timestep, expl_noise_std_h, device, episode_reward_h, done_h, episode_timestep_l, episode_reward_l, episode_num_l,
-                          batch_size, total_it, goal, next_state,
-                          actor_target_l,actor_eval_h, experience_buffer_h, actor_target_h, critic_eval_h, critic_target_h, critic_optimizer_h, actor_optimizer_h,
-                          state_sequence, action_sequence, goal_sequence,
-                          max_goal, params, goal_dim, sample_n):
+def goal_generation(actor_eval_h, goal, t, start_timestep,expl_noise_std_h, next_state, device, c, max_goal):
     next_goal = goal
     if (t + 1) % c == 0 and t > 0:
         # 2.2.7 sample goal
@@ -545,9 +541,23 @@ def high_level_add_update(t,c,start_timestep, expl_noise_std_h, device, episode_
             next_goal = torch.min(torch.max(next_goal, -max_goal), max_goal)
         else:
             expl_noise_goal = np.random.normal(loc=0, scale=expl_noise_std_h, size=goal_dim).astype(np.float32)
-            next_goal = (actor_eval_h(next_state.to(device)).detach().cpu() + expl_noise_goal).squeeze().to(device)
+            next_goal = (actor_eval_h.front(next_state.to(device)).detach().cpu() + expl_noise_goal).squeeze().to(device)
             next_goal = torch.min(torch.max(next_goal, -max_goal), max_goal)
+
+    return next_goal
+
+def high_level_add_update(t,c,start_timestep, expl_noise_std_h, device, episode_reward_h, done_h, episode_timestep_l, episode_reward_l, episode_num_l,
+                          batch_size, total_it, goal, next_state,
+                          actor_target_l,actor_eval_h, experience_buffer_h, actor_target_h, critic_eval_h, critic_target_h, critic_optimizer_h, actor_optimizer_h,
+                          state_sequence, action_sequence, goal_sequence,
+                          max_goal, params, goal_dim, sample_n, higher_goal, hierarchies_selected, goal_prev):
+    next_goal = goal_prev
+    if (t + 1) % c == 0 and t > 0:
         # 2.2.8 collect high-level experience
+
+        higher_goal = hierarchies_selected * higher_goal
+        next_goal = actor_eval_h.back(goal, higher_goal)
+
         goal_hat, updated = off_policy_correction(actor_target_l, action_sequence, state_sequence, goal_dim,
                                                   goal_sequence[0], next_state, max_goal, device, sample_n)
         experience_buffer_h.add(state_sequence[0], goal_hat, episode_reward_h, next_state, done_h)
@@ -624,7 +634,7 @@ def train(params):
     goal3 = Tensor(torch.randn(goal_dim)).to(device)
     goal4 = Tensor(torch.randn(goal_dim)).to(device)
     goal5 = Tensor(torch.randn(goal_dim)).to(device)
-    goal = Tensor(torch.randn(goal_dim * sample_n)).to(device)
+    #goal = Tensor(torch.randn(goal_dim * sample_n)).to(device)
     state_sequence2, goal_sequence2, action_sequence2, intri_reward_sequence2, reward_h_sequence2 = [], [], [], [], []
     state_sequence3, goal_sequence3, action_sequence3, intri_reward_sequence3, reward_h_sequence3 = [], [], [], [], []
     state_sequence4, goal_sequence4, action_sequence4, intri_reward_sequence4, reward_h_sequence4 = [], [], [], [], []
@@ -637,22 +647,22 @@ def train(params):
     for t in range(step, max_timestep):
         # 2.2.1 sample action
         if t < start_timestep:
-            action = env.action_space.sample()
+        
         else:
             pdb.set_trace()
             expl_noise_action = np.random.normal(loc=0, scale=expl_noise_std_l, size=action_dim).astype(np.float32)
-            action = (actor_eval_l(state, goal).detach().cpu() + expl_noise_action).clamp(-max_action, max_action).squeeze()
+            action = (actor_eval_l(state, goal2).detach().cpu() + expl_noise_action).clamp(-max_action, max_action).squeeze()
         # 2.2.2 interact environment
         next_state, _, _, info = env.step(action)
         # 2.2.3 compute step arguments
         reward_h = dense_reward(state, goal_dim, target=target_pos)
         done_h = success_judge(state, goal_dim, target_pos)
         next_state, action, reward_h, done_h = Tensor(next_state).to(device), Tensor(action), Tensor([reward_h]), Tensor([done_h])
-        intri_reward = intrinsic_reward_simple(state, goal, next_state, goal_dim, sample_n)
-        next_goal = h_function(state, goal, next_state, goal_dim, sample_n)
-        done_l = done_judge_low(goal)
+        intri_reward = intrinsic_reward_simple(state, goal2, next_state, goal_dim, sample_n)
+        next_goal = h_function(state, goal2, next_state, goal_dim, sample_n)
+        done_l = done_judge_low(goal2)
         # 2.2.4 collect low-level experience
-        experience_buffer_l.add(state, goal, action, intri_reward, next_state, next_goal, done_l)
+        experience_buffer_l.add(state, goal2, action, intri_reward, next_state, next_goal, done_l)
         # 2.2.5 record segment arguments
         state_sequence2.append(state)
         state_sequence3.append(state)
@@ -666,10 +676,10 @@ def train(params):
         intri_reward_sequence3.append(intri_reward)
         intri_reward_sequence4.append(intri_reward)
         intri_reward_sequence5.append(intri_reward)
-        goal_sequence2.append(goal)
-        goal_sequence3.append(goal)
-        goal_sequence4.append(goal)
-        goal_sequence5.append(goal)
+        goal_sequence2.append(goal2)
+        goal_sequence3.append(goal3)
+        goal_sequence4.append(goal4)
+        goal_sequence5.append(goal5)
         reward_h_sequence2.append(reward_h)
         reward_h_sequence3.append(reward_h)
         reward_h_sequence4.append(reward_h)
@@ -679,47 +689,57 @@ def train(params):
         episode_reward_h += reward_h
         episode_reward += reward_h
 
-        next_goal2, experience_buffer_2 = high_level_add_update(t, c, start_timestep, expl_noise_std_h, device,
-                                                                episode_reward_h, done_h, episode_timestep_l,
-                                                                episode_reward_l, episode_num_l,
-                                                                batch_size, total_it, goal2, next_state, actor_target_l,
-                                                                actor_eval_2, experience_buffer_2, actor_target_2,
-                                                                critic_eval_2, critic_target_2, critic_optimizer_2,
-                                                                actor_optimizer_2,
-                                                                state_sequence2, action_sequence2, goal_sequence2,
-                                                                max_goal, params, goal_dim, sample_n)
+        next_goal5 = goal_generation(actor_eval_5, goal5, t, start_timestep, expl_noise_std_h, next_state, device, c, max_goal)
+        next_goal4 = goal_generation(actor_eval_4, goal4, t, start_timestep, expl_noise_std_h, next_state, device, c, max_goal)
+        next_goal3 = goal_generation(actor_eval_3, goal3, t, start_timestep, expl_noise_std_h, next_state, device, c, max_goal)
+        next_goal2 = goal_generation(actor_eval_2, goal2, t, start_timestep, expl_noise_std_h, next_state, device, c, max_goal)
 
-        next_goal3, experience_buffer_3 = high_level_add_update(t, c+5, start_timestep, expl_noise_std_h, device,
-                                                                episode_reward_h, done_h, episode_timestep_l,
-                                                                episode_reward_l, episode_num_l,
-                                                                batch_size, total_it, goal3, next_state, actor_target_l,
-                                                                actor_eval_3, experience_buffer_3, actor_target_3,
-                                                                critic_eval_3, critic_target_3, critic_optimizer_3,
-                                                                actor_optimizer_3,
-                                                                state_sequence3, action_sequence3, goal_sequence3,
-                                                                max_goal, params, goal_dim, sample_n)
+        next_goal_none = torch.zeros_like(next_goal5)
 
-        next_goal4, experience_buffer_4 = high_level_add_update(t, c+10, start_timestep, expl_noise_std_h, device,
-                                                                episode_reward_h, done_h, episode_timestep_l,
-                                                                episode_reward_l, episode_num_l,
-                                                                batch_size, total_it, goal4, next_state, actor_target_l,
-                                                                actor_eval_4, experience_buffer_4, actor_target_4,
-                                                                critic_eval_4, critic_target_4, critic_optimizer_4,
-                                                                actor_optimizer_4,
-                                                                state_sequence4, action_sequence4, goal_sequence4,
-                                                                max_goal, params, goal_dim, sample_n)
+        hierarchies_selected, hidden_policy_network = policy_network(state, next_goal5, next_goal4, next_goal3, hidden_policy_network, masks[-1])
+
 
         next_goal5, experience_buffer_5 = high_level_add_update(t, c+15, start_timestep, expl_noise_std_h, device,
                                                                 episode_reward_h, done_h, episode_timestep_l,
                                                                 episode_reward_l, episode_num_l,
-                                                                batch_size, total_it, goal5, next_state, actor_target_l,
+                                                                batch_size, total_it, next_goal5, next_state, actor_target_l,
                                                                 actor_eval_5, experience_buffer_5, actor_target_5,
                                                                 critic_eval_5, critic_target_5, critic_optimizer_5,
                                                                 actor_optimizer_5,
                                                                 state_sequence5, action_sequence5, goal_sequence5,
-                                                                max_goal, params, goal_dim, sample_n)
+                                                                max_goal, params, goal_dim, sample_n, next_goal_none, hierarchies_selected[0], goal5)
 
-        hierarchies_selected, hidden_policy_network = policy_network(state, next_goal5, next_goal4, next_goal3, hidden_policy_network, masks[-1])
+        next_goal4, experience_buffer_4 = high_level_add_update(t, c+10, start_timestep, expl_noise_std_h, device,
+                                                                episode_reward_h, done_h, episode_timestep_l,
+                                                                episode_reward_l, episode_num_l,
+                                                                batch_size, total_it, next_goal4, next_state, actor_target_l,
+                                                                actor_eval_4, experience_buffer_4, actor_target_4,
+                                                                critic_eval_4, critic_target_4, critic_optimizer_4,
+                                                                actor_optimizer_4,
+                                                                state_sequence4, action_sequence4, goal_sequence4,
+                                                                max_goal, params, goal_dim, sample_n, next_goal5, hierarchies_selected[1], goal4)
+
+        next_goal3, experience_buffer_3 = high_level_add_update(t, c+5, start_timestep, expl_noise_std_h, device,
+                                                                episode_reward_h, done_h, episode_timestep_l,
+                                                                episode_reward_l, episode_num_l,
+                                                                batch_size, total_it, next_goal3, next_state, actor_target_l,
+                                                                actor_eval_3, experience_buffer_3, actor_target_3,
+                                                                critic_eval_3, critic_target_3, critic_optimizer_3,
+                                                                actor_optimizer_3,
+                                                                state_sequence3, action_sequence3, goal_sequence3,
+                                                                max_goal, params, goal_dim, sample_n, next_goal4, hierarchies_selected[2], goal3)
+
+        next_goal2, experience_buffer_2 = high_level_add_update(t, c, start_timestep, expl_noise_std_h, device,
+                                                                episode_reward_h, done_h, episode_timestep_l,
+                                                                episode_reward_l, episode_num_l,
+                                                                batch_size, total_it, next_goal2, next_state, actor_target_l,
+                                                                actor_eval_2, experience_buffer_2, actor_target_2,
+                                                                critic_eval_2, critic_target_2, critic_optimizer_2,
+                                                                actor_optimizer_2,
+                                                                state_sequence2, action_sequence2, goal_sequence2,
+                                                                max_goal, params, goal_dim, sample_n, next_goal3, 1, goal2)
+
+        '''hierarchies_selected, hidden_policy_network = policy_network(state, next_goal5, next_goal4, next_goal3, hidden_policy_network, masks[-1])
         hierarchies_selected = torch.cat([hierarchies_selected, torch.ones((1, 1)).type(torch.float)], dim=0)
         hierarchies_selected = (hierarchies_selected / hierarchies_selected.sum())
 
@@ -730,11 +750,14 @@ def train(params):
         #sampled_tensors = [tensors[i] for i in sampled_indices[0]]
         #for i in sampled_indices[0]: tensors[i]
         next_goal = torch.cat([tensors[i] for i in sampled_indices[0]])
-        next_goal = next_goal + noise
+        next_goal = next_goal + noise'''
 
         # 2.2.10 update observations
         state = next_state
-        goal = next_goal
+        goal5 = next_goal5
+        goal4 = next_goal4
+        goal3 = next_goal3
+        goal2 = next_goal2
 
         # 2.2.11 update networks
         if t >= start_timestep:
@@ -816,7 +839,7 @@ if __name__ == "__main__":
         max_timestep=int(3e6),
         start_timestep=int(300),
         batch_size=100,
-        sample_n=2
+        sample_n=1
     )
     params = ParamDict(
         policy_params=policy_params,
