@@ -147,16 +147,31 @@ class ActorHigh(nn.Module):
             nn.Linear(300, goal_dim),
             nn.Tanh()
         )
+
+        self.high_goal_linear = nn.Linear(3, 3)
         self.max_goal = torch.Tensor(max_goal).to(device)
 
-    def forward(self, state):
+    def front(self, state):
         # force to reformat input data
         if not isinstance(state, torch.Tensor): state = torch.Tensor(state)
         # reformat input as batch data
         if len(state.shape) < 2: state = state[None, :]
         # forward propagate
+
+
         logits = self.fc(state)
+
         next_goal = logits * self.max_goal
+
+
+        return next_goal
+
+    def back(self, logits, higher_goal):
+
+        higher_goal = self.high_goal_linear(higher_goal)
+
+        next_goal = (higher_goal + logits) * self.max_goal
+
         return next_goal
 
 
